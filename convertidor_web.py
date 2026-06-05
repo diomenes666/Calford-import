@@ -128,6 +128,13 @@ def calcular_precio_especial(val):
     except (ValueError, TypeError):
         return 0
 
+def limpiar_imagenes(val):
+    if pd.isna(val):
+        return ""
+    enlaces = [url.strip() for url in str(val).split(',')]
+    enlaces = [url for url in enlaces if url]
+    return ",".join(enlaces)
+
 # Las 97 columnas exactas de la plantilla Shopstar (en orden)
 COLUMNAS_PLANTILLA = [
     'Link Imagenes', 'Categoria', 'Nombre Producto', 'Nombre SKU', 'SKU',
@@ -209,7 +216,7 @@ def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     df_out = pd.DataFrame('', index=range(n), columns=COLUMNAS_PLANTILLA)
 
     # Rellenar columnas calculadas
-    df_out['Link Imagenes']         = df_wp['Imágenes'].fillna('')
+    df_out['Link Imagenes']         = df_wp['Imágenes'].apply(limpiar_imagenes)
     df_out['Categoria']             = '1038-Infantil/Juguetes/Coleccionables'
     df_out['Nombre Producto']       = df_wp['Nombre'].apply(limpiar_nombre)
     df_out['Nombre SKU']            = df_out['Nombre Producto']
@@ -222,8 +229,8 @@ def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     df_out['Ancho']                 = df_wp['Anchura (cm)'].fillna(0)
     df_out['Largo']                 = df_wp['Longitud (cm)'].fillna(0)
     df_out['Stock']                 = df_wp['Inventario'].apply(calcular_stock)
-    df_out['Precio Base']           = precio_normal
     df_out['Precio Especial']       = precio_base_especial.apply(calcular_precio_especial)
+    df_out['Precio Base']           = (df_out['Precio Especial'] * 1.5).round(0).astype(int)
     df_out['Precio Especial Inicio'] = datetime.now().strftime('%d/%m/%Y')
     df_out['Precio Especial Hasta']  = '05/19/2050 23:24:07'
 
