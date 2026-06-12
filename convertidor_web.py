@@ -19,8 +19,8 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght=400;500;600;700&display=swap');
+        html, body, [class*=\"css\"] { font-family: 'Inter', sans-serif; }
         .stFileUploader {
             border: 2px dashed #cbd5e1; border-radius: 12px; padding: 10px;
             background-color: #f8fafc; transition: all 0.3s ease;
@@ -41,9 +41,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =====================================================================
-# DICCIONARIO DE CATEGORÍAS FALABELLA
-# Clave  = nombre que verá el usuario en el selectbox
-# Valor  = archivo dentro de plantillas_falabella/
+# DICCIONARIOS DE CATEGORÍAS (RUTAS Y PLANTILLAS)
 # =====================================================================
 CATEGORIAS_FALABELLA = {
     "2316 - Juguetes y juegos / Muñecos de acción no eléctricos":           "juguetes_y_juegos.xlsx",
@@ -53,11 +51,14 @@ CATEGORIAS_FALABELLA = {
     "449  - Juguetes y juegos / Rompecabezas":                              "rompecabezas.xlsx",
     "1259 - Juguetes y juegos / Juegos de tablero":                         "juego_de_mesa.xlsx",
     "3303 - Ropa y accesorios / Pijamas":                                   "pijamas.xlsx",
-    "2898 - Ropa y accesorios / Polos y camisetas":                         "polo.xlsx",
+    "2898 - Ropa y accesorios / Polos y cassettes":                         "polo.xlsx",
     "463  - Hogar / Ropa de cama":                                          "ropa_de_cama.xlsx",
 }
 
-# Categoría cuyo país de producción es Dinamarca (excepción a China)
+CATEGORIAS_RIPLEY = {
+    "Juguetes y Juegos (Figuras Coleccionables)":                          "juguetes_y_juegos.xlsx",
+}
+
 CATEGORIA_LEGO = "956  - Juguetes y juegos / Bloques de construcción (Lego)"
 
 # =====================================================================
@@ -95,6 +96,13 @@ def limpiar_nombre_falabella(texto):
         s = s.replace(tag, '')
     return " ".join(s.replace('"', '').replace("'", '').split())
 
+def limpiar_nombre_ripley(texto):
+    if pd.isna(texto):
+        return ""
+    s = eliminar_emojis(str(texto))
+    s = s.upper().strip()
+    return s[:125]
+
 def limpiar_descripcion(html_texto):
     if pd.isna(html_texto):
         return ""
@@ -124,7 +132,7 @@ def safe_num(val, default):
         return default
 
 # =====================================================================
-# 2. MOTOR SHOPSTAR (INTACTO — 97 columnas)
+# 2. MOTOR SHOPSTAR (97 columnas)
 # =====================================================================
 COLUMNAS_PLANTILLA = [
     'Link Imagenes', 'Categoria', 'Nombre Producto', 'Nombre SKU', 'SKU',
@@ -180,7 +188,6 @@ def calcular_precio_especial_shopstar(val):
 
 def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     logs = []
-
     columnas_requeridas_wp = [
         'SKU', 'Nombre', 'Descripción', 'Marcas',
         'Inventario', 'Precio normal', 'Imágenes', 'URL externa',
@@ -188,39 +195,27 @@ def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     ]
     columnas_faltantes_wp = [col for col in columnas_requeridas_wp if col not in df_wp.columns]
     if columnas_faltantes_wp:
-        logs.append((
-            "❌ ERROR: El CSV de WordPress no tiene la estructura correcta.\nFaltan:\n" +
-            "\n".join([f"  ⚠️ '{c}'" for c in columnas_faltantes_wp]), "error"
-        ))
+        logs.append(("❌ ERROR: El CSV de WordPress no tiene la estructura correcta.\nFaltan:\n" + "\n".join([f"  ⚠️ '{c}'" for c in columnas_faltantes_wp]), "error"))
         return None, logs, True
 
     if 'MARCA WP' not in df_marcas_maestro.columns or 'MARCA SS' not in df_marcas_maestro.columns:
         logs.append(("❌ ERROR: La tabla de marcas debe tener los encabezados 'MARCA WP' y 'MARCA SS'.", "error"))
         return None, logs, True
 
-    dict_marcas = dict(zip(
-        df_marcas_maestro['MARCA WP'].astype(str).str.strip().str.lower(),
-        df_marcas_maestro['MARCA SS'].astype(str).str.strip()
-    ))
-
+    dict_marcas = dict(zip(df_marcas_maestro['MARCA WP'].astype(str).str.strip().str.lower(), df_marcas_maestro['MARCA SS'].astype(str).str.strip()))
     marcas_en_wp = df_wp['Marcas'].dropna().unique()
     marcas_faltantes = [str(m).strip() for m in marcas_en_wp if str(m).strip().lower() not in dict_marcas]
     if marcas_faltantes:
-        logs.append((
-            "❌ PROCESO DETENIDO: Marcas nuevas sin registrar en equivalencias:\n" +
-            "\n".join([f"  • {m}" for m in marcas_faltantes]), "error"
-        ))
+        logs.append(("❌ PROCESO DETENIDO: Marcas nuevas sin registrar en equivalencias:\n" + "\n".join([f"  • {m}" for m in marcas_faltantes]), "error"))
         return None, logs, True
 
     logs.append(("✨ Aplicando transformaciones y limpiando textos...", "info"))
     n = len(df_wp)
-
     precio_para_especial = df_wp['Precio rebajado'].fillna(0).astype(float)
     precio_normal        = df_wp['Precio normal'].fillna(0).astype(float)
     precio_base_especial = precio_para_especial.where(precio_para_especial > 0, precio_normal)
 
     df_out = pd.DataFrame('', index=range(n), columns=COLUMNAS_PLANTILLA)
-
     df_out['Link Imagenes']          = df_wp['Imágenes'].apply(limpiar_imagenes)
     df_out['Categoria']              = '1038-Infantil/Juguetes/Coleccionables'
     df_out['Nombre Producto']        = df_wp['Nombre'].apply(limpiar_nombre_shopstar)
@@ -228,7 +223,6 @@ def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     df_out['SKU']                    = df_wp['SKU'].fillna('')
     df_out['Descripcion']            = df_wp['Descripción'].apply(limpiar_descripcion)
     df_out['Marca']                  = df_wp['Marcas'].astype(str).str.strip().str.lower().map(dict_marcas)
-    df_out['Keywords']               = ''
     df_out['Peso']                   = df_wp['Peso (kg)'].fillna(0)
     df_out['Alto']                   = df_wp['Altura (cm)'].fillna(0)
     df_out['Ancho']                  = df_wp['Anchura (cm)'].fillna(0)
@@ -238,24 +232,19 @@ def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     df_out['Precio Base']            = (df_out['Precio Especial'] * 1.5).round(0).astype(int)
     df_out['Precio Especial Inicio'] = datetime.now().strftime('%d/%m/%Y')
     df_out['Precio Especial Hasta']  = '05/19/2050 23:24:07'
-    df_out['Link']                   = (
-        df_out['Nombre Producto'].str.lower().str.replace(' ', '-', regex=False)
-        + '-' + df_out['SKU'].str.lower()
-    )
+    df_out['Link']                   = (df_out['Nombre Producto'].str.lower().str.replace(' ', '-', regex=False) + '-' + df_out['SKU'].str.lower())
 
     logs.append((f"✅ Conversión finalizada con éxito. Se procesaron {len(df_out)} productos (97 columnas).", "success"))
     return df_out, logs, False
 
-# =====================================================================
-# 3. MOTOR FALABELLA — MULTICATEGORÍA CON MAPEO POR NOMBRE
-# =====================================================================
 
+# =====================================================================
+# 3. MOTOR FALABELLA (CORREGIDO COMPLETAMENTE)
+# =====================================================================
 def calcular_sale_price_falabella(val):
     try:
         p = float(val)
-        if pd.isna(p) or p <= 0:
-            return 0
-        return int(round(p * 1.26 / 10) * 10 - 1)
+        return int(round(p * 1.26 / 10) * 10 - 1) if not pd.isna(p) and p > 0 else 0
     except (ValueError, TypeError):
         return 0
 
@@ -270,74 +259,49 @@ def calcular_stock_falabella(val):
 
 def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
     logs = []
-
-    # --- Ruta dinámica a la plantilla ---
     nombre_archivo = CATEGORIAS_FALABELLA[categoria_sel]
     ruta_plantilla = os.path.join("plantillas_falabella", nombre_archivo)
 
     try:
         wb_base = openpyxl.load_workbook(ruta_plantilla)
     except FileNotFoundError:
-        logs.append((
-            f"❌ No se encontró la plantilla '{ruta_plantilla}'.\n"
-            "Asegúrate de subir la carpeta 'plantillas_falabella/' junto al script en GitHub.",
-            "error"
-        ))
+        logs.append((f"❌ No se encontró la plantilla '{ruta_plantilla}'. Asegúrate de tenerla en tu repositorio.", "error"))
         return None, None, logs, True
 
     ws_base = wb_base['Subir plantilla']
+    n_cols = ws_base.max_column
+    col_nombres = [str(ws_base.cell(row=4, column=c).value or "").strip() for c in range(1, n_cols + 1)]
 
-    # --- Extraer nombres técnicos de la fila 4 (índice openpyxl = fila 4) ---
-    n_cols      = ws_base.max_column
-    col_nombres = [ws_base.cell(row=4, column=c).value or "" for c in range(1, n_cols + 1)]
-
-    # --- Leer categoría primaria desde la hoja Categorías ---
-    ws_cat         = wb_base['Categorías']
+    ws_cat = wb_base['Categorías']
     categoria_prim = ""
     for row in ws_cat.iter_rows(max_row=10, max_col=3, values_only=True):
         for cell in row:
             if cell and str(cell).strip() and str(cell).strip() != "PrimaryCategory":
                 categoria_prim = str(cell).strip()
                 break
-        if categoria_prim:
-            break
+        if categoria_prim: break
 
-    # --- Validaciones previas ---
     columnas_requeridas_wp = ['SKU', 'Nombre', 'Descripción', 'Marcas', 'Inventario', 'Imágenes']
     faltantes = [c for c in columnas_requeridas_wp if c not in df_wp.columns]
     if faltantes:
-        logs.append((
-            "❌ ERROR: Faltan columnas en el CSV de WordPress:\n" +
-            "\n".join([f"  ⚠️ '{c}'" for c in faltantes]), "error"
-        ))
+        logs.append(("❌ ERROR: Faltan columnas en el CSV de WordPress.", "error"))
         return None, None, logs, True
 
     if 'MARCA WP' not in df_marcas_maestro.columns or 'MARCA FALABELLA' not in df_marcas_maestro.columns:
-        logs.append(("❌ ERROR: La tabla de marcas debe tener columnas 'MARCA WP' y 'MARCA FALABELLA'.", "error"))
+        logs.append(("❌ ERROR: Equivalencias debe tener 'MARCA WP' y 'MARCA FALABELLA'.", "error"))
         return None, None, logs, True
 
-    dict_marcas = dict(zip(
-        df_marcas_maestro['MARCA WP'].astype(str).str.strip().str.lower(),
-        df_marcas_maestro['MARCA FALABELLA'].astype(str).str.strip()
-    ))
-
-    marcas_en_wp         = df_wp['Marcas'].dropna().unique()
-    marcas_sin_equiv     = [str(m).strip() for m in marcas_en_wp if str(m).strip().lower() not in dict_marcas]
+    dict_marcas = dict(zip(df_marcas_maestro['MARCA WP'].astype(str).str.strip().str.lower(), df_marcas_maestro['MARCA FALABELLA'].astype(str).str.strip()))
+    marcas_en_wp = df_wp['Marcas'].dropna().unique()
+    marcas_sin_equiv = [str(m).strip() for m in marcas_en_wp if str(m).strip().lower() not in dict_marcas]
     if marcas_sin_equiv:
-        logs.append((
-            "❌ PROCESO DETENIDO: Marcas sin equivalencia en 'MARCA FALABELLA':\n" +
-            "\n".join([f"  • {m}" for m in marcas_sin_equiv]) +
-            "\n\nAgrega estas marcas a tu tabla de equivalencias y vuelve a intentarlo.",
-            "error"
-        ))
+        logs.append(("❌ PROCESO DETENIDO: Marcas sin equivalencia en 'MARCA FALABELLA':\n" + "\n".join([f"  • {m}" for m in marcas_sin_equiv]), "error"))
         return None, None, logs, True
 
-    logs.append((f"✨ Procesando con plantilla: {nombre_archivo} ({n_cols} columnas)...", "info"))
-
+    logs.append((f"✨ Procesando con plantilla: {nombre_archivo}...", "info"))
     hoy = datetime.now().strftime('%Y-%m-%d')
-    n   = len(df_wp)
+    n = len(df_wp)
 
-    # Precio origen: rebajado si existe, si no normal
     precio_rebajado = pd.to_numeric(df_wp.get('Precio rebajado', pd.Series([0]*n)), errors='coerce').fillna(0)
     precio_normal   = pd.to_numeric(df_wp.get('Precio normal',   pd.Series([0]*n)), errors='coerce').fillna(0)
     precio_origen   = precio_rebajado.where(precio_rebajado > 0, precio_normal)
@@ -345,332 +309,384 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
     sale_prices = precio_origen.apply(calcular_sale_price_falabella).astype(int)
     list_prices = (sale_prices * 1.5).apply(math.ceil).astype(int)
     stocks      = df_wp['Inventario'].apply(calcular_stock_falabella).astype(int)
-
-    # País según categoría
     pais_produccion = "Dinamarca" if categoria_sel == CATEGORIA_LEGO else "China"
 
-    # Columna GTIN
     col_gtin = 'GTIN, UPC, EAN o ISBN'
     gtin_series = df_wp[col_gtin] if col_gtin in df_wp.columns else pd.Series([''] * n)
 
-    # ── Construir filas producto ──────────────────────────────────────
     filas_productos = []
-
     for i in range(n):
-        # Inicializar todas las celdas vacías indexadas por nombre técnico
         fila = {col: "" for col in col_nombres}
-
-        # Distribuir imágenes en columnas IM1…IM8
-        imgs_raw    = df_wp['Imágenes'].iloc[i]
-        imgs        = [u.strip() for u in str(imgs_raw).split(',') if u.strip()] if not pd.isna(imgs_raw) else []
+        imgs_raw = df_wp['Imágenes'].iloc[i]
+        imgs = [u.strip() for u in str(imgs_raw).split(',') if u.strip()] if not pd.isna(imgs_raw) else []
         imgs_padded = (imgs + [''] * 8)[:8]
 
-        # Medidas con fallback
         ancho_pkg = safe_num(df_wp.get('Anchura (cm)',  pd.Series([10]*n)).iloc[i], 10)
         largo_pkg = safe_num(df_wp.get('Longitud (cm)', pd.Series([10]*n)).iloc[i], 10)
         alto_pkg  = safe_num(df_wp.get('Altura (cm)',   pd.Series([10]*n)).iloc[i], 10)
         peso_pkg  = safe_num(df_wp.get('Peso (kg)',     pd.Series([0.5]*n)).iloc[i], 0.5)
 
-        # ── MAPEO UNIVERSAL POR NOMBRE (coincidencia parcial) ─────────
         img_idx = 0
         for col in col_nombres:
-            if not col:
-                continue
-
-            # Nombre
-            if col.startswith("Nombre #"):
+            if not col: continue
+            
+            # === TODO EL BLOQUE EVALUADO CORRECTAMENTE CON .lower() ===
+            if "nombre #" in col.lower(): 
                 fila[col] = limpiar_nombre_falabella(df_wp['Nombre'].iloc[i])
-
-            # Marca
-            elif col.startswith("Marca #"):
-                key = str(df_wp['Marcas'].iloc[i]).strip().lower()
-                fila[col] = dict_marcas.get(key, "")
-
-            # Modelo — siempre vacío
-            elif col.startswith("Modelo #"):
-                fila[col] = ""
-
-            # Descripción
-            elif col.startswith("Descripción #"):
+            elif "marca #" in col.lower(): 
+                fila[col] = dict_marcas.get(str(df_wp['Marcas'].iloc[i]).strip().lower(), "")
+            elif "descripción #" in col.lower() or "descripcion #" in col.lower(): 
                 fila[col] = limpiar_descripcion(df_wp['Descripción'].iloc[i])
-
-            # Categoría primaria
-            elif "Categoría primaria" in col:
+            elif "categoría primaria" in col.lower() or "primarycategory" in col.lower(): 
                 fila[col] = categoria_prim
-
-            # País de producción
-            elif "País de producción" in col:
+            elif "país de producción" in col.lower() or "productioncountry" in col.lower(): 
                 fila[col] = pais_produccion
-
-            # SKU del vendedor
-            elif "SKU del vendedor" in col:
+            elif "sku del vendedor" in col.lower() or "seller_sku" in col.lower(): 
                 fila[col] = limpiar_sku_falabella(df_wp['SKU'].iloc[i])
-
-            # Código de barras
-            elif "Código de barras" in col:
-                gtin_val = gtin_series.iloc[i]
-                fila[col] = "" if pd.isna(gtin_val) else str(gtin_val)
-
-            # Variación — siempre '...'
-            elif col.startswith("Variación #") or col.startswith("Variacion #"):
+            elif "código de barras" in col.lower() or "barcode" in col.lower() or "gtin" in col.lower(): 
+                fila[col] = str(gtin_series.iloc[i]) if not pd.isna(gtin_series.iloc[i]) else ""
+            elif "variación #" in col.lower() or "variacion #" in col.lower(): 
                 fila[col] = "..."
-
-            # Stock
-            elif "QuantityFalabella" in col:
+            elif "quantity" in col.lower() or "stock" in col.lower(): 
                 fila[col] = int(stocks.iloc[i])
-
-            # Precio de lista
-            elif "PriceFalabella" in col:
+            elif "price" in col.lower() and "sale" not in col.lower() and "discount" not in col.lower(): 
                 fila[col] = int(list_prices.iloc[i])
-
-            # Precio rebajado (sale)
-            elif "SalePriceFalabella" in col:
+            elif "sale-price" in col.lower() or "saleprice" in col.lower(): 
                 fila[col] = int(sale_prices.iloc[i])
-
-            # Fecha inicio
-            elif "SaleStartDateFalabella" in col:
+            elif "salestartdate" in col.lower() or "fecha inicio" in col.lower(): 
                 fila[col] = hoy
-
-            # Fecha fin
-            elif "SaleEndDateFalabella" in col:
+            elif "saleenddate" in col.lower() or "fecha fin" in col.lower(): 
                 fila[col] = "2050-01-01"
-
-            # Condición del Producto
-            elif "Condición del Producto" in col:
+            elif "condición del producto" in col.lower() or "productcondition" in col.lower(): 
                 fila[col] = "Nuevo"
-
-            # GrupoDeEdad
-            elif "GrupoDeEdad" in col:
+            elif "grupodeedad" in col.lower() or "grupo de edad" in col.lower(): 
                 fila[col] = "Todas las edades"
-
-            # PiezasPequenas
-            elif "PiezasPequenas" in col:
+            elif "piezaspequenas" in col.lower() or "piezas pequeñas" in col.lower(): 
                 fila[col] = "Sí"
-
-            # CaracteristicasDeSalud — siempre "Sin BPA" en todas las categorías
-            elif "CaracteristicasDeSalud" in col:
+            elif "caracteristicasdesalud" in col.lower() or "características de salud" in col.lower(): 
                 fila[col] = "Sin BPA"
-
-            # WeightOfTheProduct = Peso del paquete
-            elif "WeightOfTheProduct" in col:
+            elif "weight" in col.lower() or "peso del paquete" in col.lower(): 
                 fila[col] = peso_pkg
-
-            # Medidas del paquete
-            elif "Ancho del paquete" in col:
+            elif "ancho del paquete" in col.lower() or "width" in col.lower(): 
                 fila[col] = ancho_pkg
-            elif "Largo del paquete" in col:
+            elif "largo del paquete" in col.lower() or "length" in col.lower(): 
                 fila[col] = largo_pkg
-            elif "Alto del paquete" in col:
+            elif "alto del paquete" in col.lower() or "height" in col.lower(): 
                 fila[col] = alto_pkg
-            elif "Peso del paquete" in col:
-                fila[col] = peso_pkg
-
-            # Imágenes secuenciales
-            elif "Imagen principal" in col or col.startswith("Imagen") and "#IM" in col:
-                fila[col] = imgs_padded[img_idx] if img_idx < 8 else ""
-                img_idx += 1
-
-        # ── EXCEPCIONES POR CATEGORÍA (valores adicionales específicos) ──
-        # Bloque escalable: agregar aquí nuevas reglas sin romper otras categorías
-
-        # (reservado para futuras columnas como Color, Material, etc.)
-
+            elif "imagen principal" in col.lower() or "imagen" in col.lower() or "image" in col.lower():
+                if img_idx < 8:
+                    fila[col] = imgs_padded[img_idx]
+                    img_idx += 1
         filas_productos.append(fila)
 
-    # Convertir lista de dicts a DataFrame con las columnas en el orden exacto de la plantilla
     df_productos = pd.DataFrame(filas_productos, columns=col_nombres)
-
-    logs.append((
-        f"✅ Falabella: {n} productos procesados · {n_cols} columnas · categoría: {categoria_prim}",
-        "success"
-    ))
+    logs.append((f"✅ Falabella finalizado con éxito.", "success"))
     return df_productos, wb_base, logs, False
 
-
 def generar_excel_falabella(df_productos, wb_base):
-    """
-    Toma el workbook original como base (preservando formato, colores, filas 1-4)
-    e inyecta los productos desde la fila 5 en adelante.
-    """
     ws = wb_base['Subir plantilla']
-
-    # Limpiar filas previas desde fila 5
     for row in ws.iter_rows(min_row=5, max_row=ws.max_row):
-        for cell in row:
-            cell.value = None
-
-    # Inyectar productos
+        for cell in row: cell.value = None
     for row_idx, row_data in enumerate(df_productos.itertuples(index=False), start=5):
         for col_idx, value in enumerate(row_data, start=1):
             ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
-
     output = io.BytesIO()
     wb_base.save(output)
     return output.getvalue()
 
 
 # =====================================================================
-# 4. CARGADORES DE ARCHIVOS
+# 4. MOTOR RIPLEY (Lectura desde Plantilla Local)
 # =====================================================================
+def calcular_stock_ripley(val):
+    try:
+        stock = float(val)
+        if pd.isna(stock) or stock <= 0:
+            return 1
+        return max(1, math.ceil(stock * 0.25))
+    except (ValueError, TypeError):
+        return 1
 
+def calcular_discount_price_ripley(val):
+    try:
+        precio = float(val)
+        if pd.isna(precio) or precio <= 0:
+            return 0
+        precio_ajustado = precio * 1.26
+        return math.ceil((precio_ajustado - 9) / 10) * 10 + 9
+    except (ValueError, TypeError):
+        return 0
+
+def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
+    logs = []
+    nombre_archivo = CATEGORIAS_RIPLEY[categoria_sel]
+    ruta_plantilla = os.path.join("plantillas_ripley", nombre_archivo)
+
+    try:
+        wb_base = openpyxl.load_workbook(ruta_plantilla)
+    except FileNotFoundError:
+        logs.append((f"❌ No se encontró la plantilla de Ripley '{ruta_plantilla}'. Asegúrate de que exista la carpeta y el archivo.", "error"))
+        return None, None, logs, True
+
+    ws_data = wb_base['DATA']
+    n_cols = ws_data.max_column
+    col_nombres = [str(ws_data.cell(row=2, column=c).value or "").strip() for c in range(1, n_cols + 1)]
+
+    columnas_requeridas_wp = ['SKU', 'Nombre', 'Descripción', 'Marcas', 'Inventario', 'Imágenes']
+    faltantes = [c for c in columnas_requeridas_wp if c not in df_wp.columns]
+    if faltantes:
+        logs.append(("❌ ERROR: Al CSV de WordPress le faltan columnas requeridas para Ripley:\n" + "\n".join([f"  ⚠️ '{c}'" for c in faltantes]), "error"))
+        return None, None, logs, True
+
+    if 'MARCA WP' not in df_marcas_maestro.columns or 'MARCA RIPLEY' not in df_marcas_maestro.columns:
+        logs.append(("❌ ERROR: La tabla de equivalencias debe incluir 'MARCA WP' y 'MARCA RIPLEY'.", "error"))
+        return None, None, logs, True
+
+    dict_marcas = dict(zip(df_marcas_maestro['MARCA WP'].astype(str).str.strip().str.lower(), df_marcas_maestro['MARCA RIPLEY'].astype(str).str.strip()))
+    marcas_en_wp = df_wp['Marcas'].dropna().unique()
+    marcas_faltantes = [str(m).strip() for m in marcas_en_wp if str(m).strip().lower() not in dict_marcas]
+    if marcas_faltantes:
+        logs.append(("❌ PROCESO DETENIDO: Marcas sin equivalencia en 'MARCA RIPLEY':\n" + "\n".join([f"  • {m}" for m in marcas_faltantes]), "error"))
+        return None, None, logs, True
+
+    logs.append((f"✨ Leyendo estructura e inyectando datos desde plantilla: {ruta_plantilla}...", "info"))
+    hoy_iso = datetime.now().strftime('%Y-%m-%dT00:00:00')
+    n = len(df_wp)
+
+    precio_rebajado = pd.to_numeric(df_wp.get('Precio rebajado', pd.Series([0]*n)), errors='coerce').fillna(0)
+    precio_normal   = pd.to_numeric(df_wp.get('Precio normal',   pd.Series([0]*n)), errors='coerce').fillna(0)
+    precio_origen   = precio_rebajado.where(precio_rebajado > 0, precio_normal)
+
+    filas_productos = []
+    for i in range(n):
+        fila = {col: "" for col in col_nombres if col}
+        imgs_raw = df_wp['Imágenes'].iloc[i]
+        imgs = [u.strip() for u in str(imgs_raw).split(',') if u.strip()] if not pd.isna(imgs_raw) else []
+
+        disc_p = calcular_discount_price_ripley(precio_origen.iloc[i])
+        list_p = int(math.ceil(disc_p * 1.5))
+        stock_calc = int(calcular_stock_ripley(df_wp['Inventario'].iloc[i]))
+
+        largo = safe_num(df_wp.get('Longitud (cm)', pd.Series([10]*n)).iloc[i], 10)
+        ancho = safe_num(df_wp.get('Anchura (cm)',  pd.Series([10]*n)).iloc[i], 10)
+        alto  = safe_num(df_wp.get('Altura (cm)',   pd.Series([10]*n)).iloc[i], 10)
+        peso  = safe_num(df_wp.get('Peso (kg)',     pd.Series([0.5]*n)).iloc[i], 0.5)
+
+        for col in col_nombres:
+            if not col: continue
+            if col == 'categoria': fila[col] = 'JUEGOS Y JUGUETES/FIGURAS COLECCIONABLES'
+            elif col == 'sku_seller': fila[col] = str(df_wp['SKU'].iloc[i]).strip()
+            elif col == 'nombre': fila[col] = limpiar_nombre_ripley(df_wp['Nombre'].iloc[i])
+            elif col == 'ShortDescription': fila[col] = 'Encuentra los mejores productos de Raymi Store en Ripley.com'
+            elif col == 'descripcion': fila[col] = limpiar_descripcion(df_wp['Descripción'].iloc[i])
+            elif col == 'marca': fila[col] = dict_marcas.get(str(df_wp['Marcas'].iloc[i]).strip().lower(), "").upper()
+            elif col == 'imagen': fila[col] = imgs[0] if len(imgs) > 0 else ""
+            elif col == 'thumbnail': fila[col] = imgs[0] if len(imgs) > 0 else ""
+            elif col.startswith('imagen') and col[6:].isdigit():
+                idx = int(col[6:])
+                if len(imgs) >= idx: fila[col] = imgs[idx-1]
+            elif col == 'largo_empaque': fila[col] = largo
+            elif col == 'ancho_empaque': fila[col] = ancho
+            elif col == 'alto_empaque': fila[col] = alto
+            elif col == 'peso_empaque': fila[col] = peso
+            elif col == 'tipo_product': fila[col] = 'Coleccionables'
+            elif col == 'color_80': fila[col] = 'Multicolor'
+            elif col == 'edad_recomendada': fila[col] = 'Todas las edades'
+            elif col == 'alto_cm': fila[col] = alto
+            elif col == 'ancho_cm': fila[col] = ancho
+            elif col == 'largo_cm': fila[col] = largo
+            elif col == 'sku': fila[col] = str(df_wp['SKU'].iloc[i]).strip()
+            elif col == 'product-id': fila[col] = str(df_wp['SKU'].iloc[i]).strip()
+            elif col == 'product-id-type': fila[col] = 'SHOP_SKU'
+            elif col == 'discount-price': fila[col] = int(disc_p)
+            elif col == 'price': fila[col] = int(list_p)
+            elif col == 'quantity': fila[col] = stock_calc
+            elif col == 'state': fila[col] = 'Nuevo'
+            elif col == 'available-start-date': fila[col] = hoy_iso
+            elif col == 'available-end-date': fila[col] = '2050-01-01T00:00:00'
+            
+        filas_productos.append(fila)
+
+    df_productos = pd.DataFrame(filas_productos, columns=col_nombres)
+    logs.append((f"✅ Ripley procesado correctamente. {len(df_productos)} filas listas.", "success"))
+    return df_productos, wb_base, logs, False
+
+def generar_excel_ripley(df_productos, wb_base):
+    ws = wb_base['DATA']
+    for row in ws.iter_rows(min_row=3, max_row=ws.max_row):
+        for cell in row: cell.value = None
+    for row_idx, row_data in enumerate(df_productos.itertuples(index=False), start=3):
+        for col_idx, value in enumerate(row_data, start=1):
+            ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
+    output = io.BytesIO()
+    wb_base.save(output)
+    return output.getvalue()
+
+
+# =====================================================================
+# 5. CARGADORES DE ARCHIVOS
+# =====================================================================
 def cargar_maestro(file_obj):
-    if file_obj is None:
-        return None
+    if file_obj is None: return None
     name = file_obj.name.lower()
     if name.endswith('.xlsx'):
-        try:
-            return pd.read_excel(file_obj, sheet_name='MARCAS')
+        try: return pd.read_excel(file_obj, sheet_name='MARCAS')
         except Exception:
             file_obj.seek(0)
             return pd.read_excel(file_obj, sheet_name=0)
     return pd.read_csv(file_obj, sep=',', dtype=str)
 
 def cargar_wp(file_obj):
-    if file_obj is None:
-        return None
+    if file_obj is None: return None
     name = file_obj.name.lower()
     df = pd.read_excel(file_obj, dtype=str) if name.endswith('.xlsx') else pd.read_csv(file_obj, sep=',', dtype=str)
-    for col in ['Inventario', 'Precio normal', 'Precio rebajado',
-                'Peso (kg)', 'Longitud (cm)', 'Anchura (cm)', 'Altura (cm)']:
+    for col in ['Inventario', 'Precio normal', 'Precio rebajado', 'Peso (kg)', 'Longitud (cm)', 'Anchura (cm)', 'Altura (cm)']:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
     return df
 
 
 # =====================================================================
-# 5. INTERFAZ DE USUARIO
+# 6. INTERFAZ DE USUARIO (STREAMLIT)
 # =====================================================================
-
 st.markdown("""
     <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 25px;
                 border-radius: 12px; margin-bottom: 25px; text-align: center; color: white;">
         <h1 style="margin: 0; font-size: 28px; font-weight: 700; font-family: 'Inter', sans-serif;">
-            E-Commerce Matrix Connector v4.0
+            E-Commerce Matrix Connector v5.3
         </h1>
         <p style="margin: 8px 0 0 0; color: #94a3b8; font-size: 15px;">
-            WordPress → Shopstar (97 col.) &nbsp;|&nbsp; Falabella Multicategoría
+            WordPress → Shopstar &nbsp;|&nbsp; Falabella (Plantilla Local) &nbsp;|&nbsp; Ripley (Plantilla Local)
         </p>
     </div>
 """, unsafe_allow_html=True)
 
-# ── SIDEBAR ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.image("https://img.icons8.com/clouds/100/null/data-configuration.png", width=100)
-    st.markdown("### Guía de Uso")
+    st.markdown("### Carpetas de Repositorio")
     st.markdown("""
-    1. **Marcas:** Sube el Excel con hoja `MARCAS` que contenga `MARCA WP`, `MARCA SS` y `MARCA FALABELLA`.
-    2. **Catálogo WP:** Sube el CSV/XLSX exportado de WordPress.
-    3. **Categoría Falabella:** Selecciona la categoría del lote que vas a procesar.
-    4. **Canal:** Pulsa el botón del canal deseado.
+    * Falabella lee de: `plantillas_falabella/`
+    * Ripley lee de: `plantillas_ripley/`
     """)
     st.divider()
 
     st.markdown("##### 🗂️ Categoría Falabella")
-    categoria_seleccionada = st.selectbox(
-        "Selecciona la categoría del lote actual:",
-        options=list(CATEGORIAS_FALABELLA.keys()),
-        key="categoria_fal"
+    categoria_falabella = st.selectbox(
+        "Lote Falabella:", options=list(CATEGORIAS_FALABELLA.keys()), key="cat_fal"
     )
     st.divider()
-    st.info("💡 **Calford Import — v4.0**\nShopstar intacto · Motor Falabella multicategoría.")
 
-# ── UPLOADERS ─────────────────────────────────────────────────────────
+    st.markdown("##### 🎫 Categoría Ripley")
+    categoria_ripley = st.selectbox(
+        "Lote Ripley:", options=list(CATEGORIAS_RIPLEY.keys()), key="cat_rip"
+    )
+    st.divider()
+    st.info("💡 **Calford Import — v5.3**\nArreglados los paréntesis de col.lower().")
+
 col1, col2 = st.columns(2)
-
 with col1:
     st.markdown("##### 📁 1. Tabla de Equivalencias de Marcas")
-    file_maestro = st.file_uploader(
-        "Excel de marcas (.xlsx / .csv)",
-        type=["xlsx", "csv"], key="maestro"
-    )
-
+    file_maestro = st.file_uploader("Excel de marcas (.xlsx / .csv)", type=["xlsx", "csv"], key="maestro")
 with col2:
     st.markdown("##### 📝 2. Catálogo WordPress")
-    file_wp = st.file_uploader(
-        "Archivo WordPress (.csv / .xlsx)",
-        type=["csv", "xlsx"], key="wordpress"
-    )
+    file_wp = st.file_uploader("Archivo WordPress (.csv / .xlsx)", type=["csv", "xlsx"], key="wordpress")
 
 st.divider()
 
-# ── BOTONES DE CANAL ──────────────────────────────────────────────────
-col_btn1, col_btn2 = st.columns(2)
+col_btn1, col_btn2, col_btn3 = st.columns(3)
 btn_shopstar  = col_btn1.button("📦 Generar Formato Shopstar",  use_container_width=True)
 btn_falabella = col_btn2.button("🔥 Generar Formato Falabella", use_container_width=True)
+btn_ripley    = col_btn3.button("🎫 Generar Formato Ripley",    use_container_width=True)
 
-# ── CANAL SHOPSTAR ────────────────────────────────────────────────────
 if btn_shopstar:
     if not file_maestro or not file_wp:
         st.warning("⚠️ Sube ambos archivos antes de generar.")
     else:
         st.markdown("##### ⚙️ Registro de Actividad — Shopstar:")
-        with st.spinner("Procesando catálogo Shopstar..."):
+        with st.spinner("Procesando..."):
             try:
                 df_marcas  = cargar_maestro(file_maestro)
                 df_wp_data = cargar_wp(file_wp)
                 df_resultado, logs, has_error = procesar_logica_shopstar(df_wp_data, df_marcas)
 
                 for msg, tipo in logs:
-                    if tipo == "error":   st.error(msg)
+                    if tipo == "error": st.error(msg)
                     elif tipo == "success": st.success(msg)
                     else: st.info(msg)
 
                 if not has_error and df_resultado is not None:
-                    st.markdown(f"##### 🔍 Vista Previa ({len(df_resultado.columns)} columnas):")
                     st.dataframe(df_resultado.head(5), use_container_width=True)
-
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         df_resultado.to_excel(writer, index=False)
-
-                    st.markdown("##### 📥 Listo para descargar:")
                     st.download_button(
                         label="🚀 Descargar Plantilla Shopstar (.xlsx)",
                         data=output.getvalue(),
                         file_name=f"Plantilla_Shopstar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-            except Exception as e:
-                st.error(f"❌ ERROR CRÍTICO AL PROCESAR SHOPSTAR: {str(e)}")
+            except Exception as e: st.error(f"❌ ERROR CRÍTICO SHOPSTAR: {str(e)}")
 
-# ── CANAL FALABELLA ───────────────────────────────────────────────────
 if btn_falabella:
     if not file_maestro or not file_wp:
         st.warning("⚠️ Sube ambos archivos antes de generar.")
     else:
-        st.markdown(f"##### ⚙️ Registro de Actividad — Falabella ({categoria_seleccionada}):")
-        with st.spinner("Procesando catálogo Falabella..."):
+        st.markdown(f"##### ⚙️ Registro de Actividad — Falabella:")
+        with st.spinner("Procesando..."):
             try:
-                file_maestro.seek(0)
-                file_wp.seek(0)
-
+                file_maestro.seek(0); file_wp.seek(0)
                 df_marcas  = cargar_maestro(file_maestro)
                 df_wp_data = cargar_wp(file_wp)
-
-                df_productos, wb_base, logs, has_error = procesar_logica_falabella(
-                    df_wp_data, df_marcas, categoria_seleccionada
-                )
+                df_productos, wb_base, logs, has_error = procesar_logica_falabella(df_wp_data, df_marcas, categoria_falabella)
 
                 for msg, tipo in logs:
-                    if tipo == "error":   st.error(msg)
+                    if tipo == "error": st.error(msg)
                     elif tipo == "success": st.success(msg)
                     else: st.info(msg)
 
                 if not has_error and df_productos is not None:
-                    st.markdown(f"##### 🔍 Vista Previa ({len(df_productos.columns)} columnas):")
                     st.dataframe(df_productos.head(5), use_container_width=True)
-
                     excel_data = generar_excel_falabella(df_productos, wb_base)
-                    st.markdown("##### 📥 Listo para descargar:")
                     st.download_button(
                         label="🔥 Descargar Plantilla Falabella (.xlsx)",
                         data=excel_data,
                         file_name=f"Plantilla_Falabella_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-            except Exception as e:
-                st.error(f"❌ ERROR CRÍTICO AL PROCESAR FALABELLA: {str(e)}")
+            except Exception as e: st.error(f"❌ ERROR CRÍTICO FALABELLA: {str(e)}")
 
-# ── Estado inicial ────────────────────────────────────────────────────
+if btn_ripley:
+    if not file_maestro or not file_wp:
+        st.warning("⚠️ Sube ambos archivos antes de generar.")
+    else:
+        st.markdown("##### ⚙️ Registro de Actividad — Ripley Coleccionables:")
+        with st.spinner("Procesando catálogo Ripley local..."):
+            try:
+                file_maestro.seek(0); file_wp.seek(0)
+                df_marcas  = cargar_maestro(file_maestro)
+                df_wp_data = cargar_wp(file_wp)
+                
+                df_productos_ripley, wb_base_ripley, logs, has_error = procesar_logica_ripley(df_wp_data, df_marcas, categoria_ripley)
+
+                for msg, tipo in logs:
+                    if tipo == "error": st.error(msg)
+                    elif tipo == "success": st.success(msg)
+                    else: st.info(msg)
+
+                if not has_error and df_productos_ripley is not None:
+                    st.markdown("##### 🔍 Vista Previa Ripley (Estructura Plantilla):")
+                    st.dataframe(df_productos_ripley.head(5), use_container_width=True)
+
+                    ripley_excel = generar_excel_ripley(df_productos_ripley, wb_base_ripley)
+                    st.markdown("##### 📥 Listo para descargar:")
+                    st.download_button(
+                        label="🎫 Descargar Plantilla Ripley (.xlsx)",
+                        data=ripley_excel,
+                        file_name=f"Plantilla_Ripley_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            except Exception as e:
+                st.error(f"❌ ERROR CRÍTICO AL PROCESAR RIPLEY: {str(e)}")
+
 if not file_maestro and not file_wp:
-    st.info("⬆️ Sube los dos archivos y selecciona la categoría para habilitar los botones.")
+    st.info("⬆️ Sube los dos archivos requeridos para activar las opciones de conversión.")
