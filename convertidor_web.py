@@ -450,7 +450,8 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
         return None, None, logs, True
 
     logs.append((f"✨ Leyendo estructura e inyectando datos desde plantilla: {ruta_plantilla}...", "info"))
-    hoy_iso = datetime.now().strftime('%Y-%m-%dT00:00:00')
+    hoy_iso = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.000-05:00')
+    fecha_fin_iso = '2050-06-09T23:59:59.000-05:00'
     n = len(df_wp)
 
     precio_rebajado = pd.to_numeric(df_wp.get('Precio rebajado', pd.Series([0]*n)), errors='coerce').fillna(0)
@@ -503,7 +504,7 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
             elif col == 'quantity': fila[col] = stock_calc
             elif col == 'state': fila[col] = 'Nuevo'
             elif col == 'available-start-date': fila[col] = hoy_iso
-            elif col == 'available-end-date': fila[col] = '2050-01-01T00:00:00'
+            elif col == 'available-end-date': fila[col] = fecha_fin_iso
             
         filas_productos.append(fila)
 
@@ -515,9 +516,20 @@ def generar_excel_ripley(df_productos, wb_base):
     ws = wb_base['DATA']
     for row in ws.iter_rows(min_row=3, max_row=ws.max_row):
         for cell in row: cell.value = None
+
+    # Identificar índices de columnas de fecha para forzar formato texto
+    n_cols = ws.max_column
+    nombres_tecnicos = [ws.cell(row=2, column=c).value or "" for c in range(1, n_cols + 1)]
+    col_fechas = {i + 1 for i, t in enumerate(nombres_tecnicos)
+                  if t in ('available-start-date', 'available-end-date',
+                           'discount-start-date', 'discount-end-date')}
+
     for row_idx, row_data in enumerate(df_productos.itertuples(index=False), start=3):
         for col_idx, value in enumerate(row_data, start=1):
-            ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
+            cell = ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
+            if col_idx in col_fechas and value:
+                cell.number_format = '@'  # formato texto, evita que Excel reinterprete el ISO string
+
     output = io.BytesIO()
     wb_base.save(output)
     return output.getvalue()
