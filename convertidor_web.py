@@ -230,8 +230,8 @@ def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     df_out['Stock']                  = df_wp['Inventario'].apply(calcular_stock_shopstar)
     df_out['Precio Especial']        = precio_base_especial.apply(calcular_precio_especial_shopstar)
     df_out['Precio Base']            = (df_out['Precio Especial'] * 1.5).round(0).astype(int)
-    df_out['Precio Especial Inicio'] = datetime.now().strftime('%d/%m/%Y')
-    df_out['Precio Especial Hasta']  = '05/19/2050 23:24:07'
+    df_out['Precio Especial Inicio'] = ''
+    df_out['Precio Especial Hasta']  = ''
     df_out['Link']                   = (df_out['Nombre Producto'].str.lower().str.replace(' ', '-', regex=False) + '-' + df_out['SKU'].str.lower())
 
     logs.append((f"✅ Conversión finalizada con éxito. Se procesaron {len(df_out)} productos (97 columnas).", "success"))
