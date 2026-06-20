@@ -132,38 +132,9 @@ def safe_num(val, default):
         return default
 
 # =====================================================================
-# 2. MOTOR SHOPSTAR (97 columnas)
+# 2. MOTOR SHOPSTAR (Plantilla Local)
 # =====================================================================
-COLUMNAS_PLANTILLA = [
-    'Link Imagenes', 'Categoria', 'Nombre Producto', 'Nombre SKU', 'SKU',
-    'Descripcion', 'Marca', 'Keywords', 'Peso', 'Alto', 'Ancho', 'Largo',
-    'Stock', 'Precio Base', 'Precio Especial', 'Precio Especial Inicio',
-    'Precio Especial Hasta', 'Producto_incluyeluces', 'Producto_edad',
-    'Producto_tipodefijacion', 'Producto_edadsugeridadeuso',
-    'Producto_profundidad(cm)', 'Producto_tamaño/largo(cm)', 'Producto_incluye',
-    'Producto__excerptdescription', 'Producto_pesodelproducto(kg)',
-    'Producto_incluyemovimiento', 'Producto_ancho', 'Producto_ancho(cm)',
-    'Producto_edadminimarecomendada', 'Producto_material', 'Producto_observaciones',
-    'Producto_sonidos', 'Producto_peso', 'Producto_FuenteDeEnergía',
-    'Producto_alto(cm)', 'Producto_recomendacionesdeuso',
-    'Producto_cantidaddejugadores', 'Producto_color', 'Producto_alto',
-    'Producto_capacidad', 'Producto_impermeable', 'Producto_composicion',
-    'Producto_certificaciones', 'Producto_comousarlo', 'Producto_nombrecomercial',
-    'Producto_largo(cm)', 'Producto_vibraciones', 'Producto_descripciondelproducto',
-    'Producto_advertenciadeuso', 'Producto_genero', 'Producto_cantidaddeposiciones',
-    'Producto_accesorios', 'Producto_modelo', 'Producto_garantia',
-    'Producto_nomenclatura', 'Producto_Medidas', 'Producto_IncluyeBaterías',
-    'Producto_marca', 'Producto_unidadesporpaquete', 'Producto_descripcion',
-    'Producto_lavable', 'Producto_resistenciamaxima', 'Producto_pesodelproducto',
-    'Producto_largo', 'Producto_pesodelproducto(g)', 'Producto_JugueteDidáctico',
-    'Producto_medidasempaque', 'Producto_edadsugerida', 'Producto_DetalleDeSurtido',
-    'Producto_Luces', 'Producto_cantidaddepiezas', 'Producto_sku', 'Producto_piezas',
-    'Producto_diseño', 'Producto_Sonido', 'Producto_rapidez',
-    'Producto_pesomaximoporusuario', 'Producto_color/diseño',
-    'Producto_advertenciasdeuso', 'Producto_tipodeproducto', 'Producto_peso(kg)',
-    'Producto_caracteristicas', 'Producto_textura', 'Producto_antialergico',
-    'Producto_masinformacion', 'Link', 'Meta Title', 'Meta Descripcion', 'Same Day'
-]
+RUTA_PLANTILLA_SHOPSTAR = os.path.join("plantillas_shopstar", "Plantillashoptar_.xlsx")
 
 def calcular_stock_shopstar(val):
     try:
@@ -188,54 +159,88 @@ def calcular_precio_especial_shopstar(val):
 
 def procesar_logica_shopstar(df_wp, df_marcas_maestro):
     logs = []
+
+    try:
+        wb_base = openpyxl.load_workbook(RUTA_PLANTILLA_SHOPSTAR)
+    except FileNotFoundError:
+        logs.append((f"❌ No se encontró la plantilla '{RUTA_PLANTILLA_SHOPSTAR}'. Asegúrate de tenerla en la carpeta 'plantillas_shopstar/' del repositorio.", "error"))
+        return None, None, logs, True
+
+    ws_base = wb_base['PLANTILLA']
+    n_cols = ws_base.max_column
+    col_nombres = [str(ws_base.cell(row=1, column=c).value or "").strip() for c in range(1, n_cols + 1)]
+
     columnas_requeridas_wp = [
         'SKU', 'Nombre', 'Descripción', 'Marcas',
-        'Inventario', 'Precio normal', 'Imágenes', 'URL externa',
+        'Inventario', 'Precio normal', 'Imágenes',
         'Peso (kg)', 'Longitud (cm)', 'Anchura (cm)', 'Altura (cm)'
     ]
     columnas_faltantes_wp = [col for col in columnas_requeridas_wp if col not in df_wp.columns]
     if columnas_faltantes_wp:
         logs.append(("❌ ERROR: El CSV de WordPress no tiene la estructura correcta.\nFaltan:\n" + "\n".join([f"  ⚠️ '{c}'" for c in columnas_faltantes_wp]), "error"))
-        return None, logs, True
+        return None, None, logs, True
 
     if 'MARCA WP' not in df_marcas_maestro.columns or 'MARCA SS' not in df_marcas_maestro.columns:
         logs.append(("❌ ERROR: La tabla de marcas debe tener los encabezados 'MARCA WP' y 'MARCA SS'.", "error"))
-        return None, logs, True
+        return None, None, logs, True
 
     dict_marcas = dict(zip(df_marcas_maestro['MARCA WP'].astype(str).str.strip().str.lower(), df_marcas_maestro['MARCA SS'].astype(str).str.strip()))
     marcas_en_wp = df_wp['Marcas'].dropna().unique()
     marcas_faltantes = [str(m).strip() for m in marcas_en_wp if str(m).strip().lower() not in dict_marcas]
     if marcas_faltantes:
         logs.append(("❌ PROCESO DETENIDO: Marcas nuevas sin registrar en equivalencias:\n" + "\n".join([f"  • {m}" for m in marcas_faltantes]), "error"))
-        return None, logs, True
+        return None, None, logs, True
 
     logs.append(("✨ Aplicando transformaciones y limpiando textos...", "info"))
     n = len(df_wp)
-    precio_para_especial = df_wp['Precio rebajado'].fillna(0).astype(float)
-    precio_normal        = df_wp['Precio normal'].fillna(0).astype(float)
+    precio_para_especial = pd.to_numeric(df_wp.get('Precio rebajado', pd.Series([0]*n)), errors='coerce').fillna(0)
+    precio_normal        = pd.to_numeric(df_wp['Precio normal'], errors='coerce').fillna(0)
     precio_base_especial = precio_para_especial.where(precio_para_especial > 0, precio_normal)
 
-    df_out = pd.DataFrame('', index=range(n), columns=COLUMNAS_PLANTILLA)
-    df_out['Link Imagenes']          = df_wp['Imágenes'].apply(limpiar_imagenes)
-    df_out['Categoria']              = '1038-Infantil/Juguetes/Coleccionables'
-    df_out['Nombre Producto']        = df_wp['Nombre'].apply(limpiar_nombre_shopstar)
-    df_out['Nombre SKU']             = df_out['Nombre Producto']
-    df_out['SKU']                    = df_wp['SKU'].fillna('')
-    df_out['Descripcion']            = df_wp['Descripción'].apply(limpiar_descripcion)
-    df_out['Marca']                  = df_wp['Marcas'].astype(str).str.strip().str.lower().map(dict_marcas)
-    df_out['Peso']                   = df_wp['Peso (kg)'].fillna(0)
-    df_out['Alto']                   = df_wp['Altura (cm)'].fillna(0)
-    df_out['Ancho']                  = df_wp['Anchura (cm)'].fillna(0)
-    df_out['Largo']                  = df_wp['Longitud (cm)'].fillna(0)
-    df_out['Stock']                  = df_wp['Inventario'].apply(calcular_stock_shopstar)
-    df_out['Precio Especial']        = precio_base_especial.apply(calcular_precio_especial_shopstar)
-    df_out['Precio Base']            = (df_out['Precio Especial'] * 1.5).round(0).astype(int)
-    df_out['Precio Especial Inicio'] = ''
-    df_out['Precio Especial Hasta']  = ''
-    df_out['Link']                   = (df_out['Nombre Producto'].str.lower().str.replace(' ', '-', regex=False) + '-' + df_out['SKU'].str.lower())
+    precios_especiales = precio_base_especial.apply(calcular_precio_especial_shopstar)
 
-    logs.append((f"✅ Conversión finalizada con éxito. Se procesaron {len(df_out)} productos (97 columnas).", "success"))
-    return df_out, logs, False
+    filas_productos = []
+    for i in range(n):
+        fila = {col: "" for col in col_nombres if col}
+        precio_esp = int(precios_especiales.iloc[i])
+        precio_base = int(round(precio_esp * 1.5))
+        nombre_limpio = limpiar_nombre_shopstar(df_wp['Nombre'].iloc[i])
+        sku = str(df_wp['SKU'].iloc[i]).strip() if not pd.isna(df_wp['SKU'].iloc[i]) else ""
+
+        for col in col_nombres:
+            if not col: continue
+            col_l = col.lower()
+            if col == 'Link Imagenes':       fila[col] = limpiar_imagenes(df_wp['Imágenes'].iloc[i])
+            elif col == 'Categoria':         fila[col] = '1038-Infantil/Juguetes/Coleccionables'
+            elif col == 'Nombre Producto':   fila[col] = nombre_limpio
+            elif col == 'Nombre SKU':        fila[col] = nombre_limpio
+            elif col == 'SKU':               fila[col] = sku
+            elif col == 'Descripcion':       fila[col] = limpiar_descripcion(df_wp['Descripción'].iloc[i])
+            elif col == 'Marca':             fila[col] = dict_marcas.get(str(df_wp['Marcas'].iloc[i]).strip().lower(), "")
+            elif col == 'Peso':              fila[col] = safe_num(df_wp.get('Peso (kg)', pd.Series([0]*n)).iloc[i], 0)*1000
+            elif col == 'Alto':              fila[col] = safe_num(df_wp.get('Altura (cm)', pd.Series([0]*n)).iloc[i], 0)
+            elif col == 'Ancho':             fila[col] = safe_num(df_wp.get('Anchura (cm)', pd.Series([0]*n)).iloc[i], 0)
+            elif col == 'Largo':             fila[col] = safe_num(df_wp.get('Longitud (cm)', pd.Series([0]*n)).iloc[i], 0)
+            elif col == 'Stock':             fila[col] = int(calcular_stock_shopstar(df_wp['Inventario'].iloc[i]))
+            elif col == 'Precio Especial':   fila[col] = precio_esp
+            elif col == 'Precio Base':       fila[col] = precio_base
+            elif col == 'Link':              fila[col] = nombre_limpio.lower().replace(' ', '-') + '-' + sku.lower()
+        filas_productos.append(fila)
+
+    df_out = pd.DataFrame(filas_productos, columns=col_nombres)
+    logs.append((f"✅ Conversión finalizada con éxito. Se procesaron {len(df_out)} productos.", "success"))
+    return df_out, wb_base, logs, False
+
+def generar_excel_shopstar(df_productos, wb_base):
+    ws = wb_base['PLANTILLA']
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for cell in row: cell.value = None
+    for row_idx, row_data in enumerate(df_productos.itertuples(index=False), start=2):
+        for col_idx, value in enumerate(row_data, start=1):
+            ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
+    output = io.BytesIO()
+    wb_base.save(output)
+    return output.getvalue()
 
 
 # =====================================================================
@@ -565,7 +570,7 @@ st.markdown("""
     <div style="background: linear-gradient(135deg, #1e293b, #0f172a); padding: 25px;
                 border-radius: 12px; margin-bottom: 25px; text-align: center; color: white;">
         <h1 style="margin: 0; font-size: 28px; font-weight: 700; font-family: 'Inter', sans-serif;">
-            E-Commerce Matrix Connector v5.3
+            E-Commerce Matrix Connector v5.4
         </h1>
         <p style="margin: 8px 0 0 0; color: #94a3b8; font-size: 15px;">
             WordPress → Shopstar &nbsp;|&nbsp; Falabella (Plantilla Local) &nbsp;|&nbsp; Ripley (Plantilla Local)
@@ -577,6 +582,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/clouds/100/null/data-configuration.png", width=100)
     st.markdown("### Carpetas de Repositorio")
     st.markdown("""
+    * Shopstar lee de: `plantillas_shopstar/`
     * Falabella lee de: `plantillas_falabella/`
     * Ripley lee de: `plantillas_ripley/`
     """)
@@ -593,7 +599,7 @@ with st.sidebar:
         "Lote Ripley:", options=list(CATEGORIAS_RIPLEY.keys()), key="cat_rip"
     )
     st.divider()
-    st.info("💡 **Calford Import — v5.3**\nArreglados los paréntesis de col.lower().")
+    st.info("💡 **Calford Import — v5.4**\nShopstar migrado a plantilla local.")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -619,7 +625,7 @@ if btn_shopstar:
             try:
                 df_marcas  = cargar_maestro(file_maestro)
                 df_wp_data = cargar_wp(file_wp)
-                df_resultado, logs, has_error = procesar_logica_shopstar(df_wp_data, df_marcas)
+                df_resultado, wb_base, logs, has_error = procesar_logica_shopstar(df_wp_data, df_marcas)
 
                 for msg, tipo in logs:
                     if tipo == "error": st.error(msg)
@@ -628,12 +634,10 @@ if btn_shopstar:
 
                 if not has_error and df_resultado is not None:
                     st.dataframe(df_resultado.head(5), use_container_width=True)
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        df_resultado.to_excel(writer, index=False)
+                    excel_data = generar_excel_shopstar(df_resultado, wb_base)
                     st.download_button(
                         label="🚀 Descargar Plantilla Shopstar (.xlsx)",
-                        data=output.getvalue(),
+                        data=excel_data,
                         file_name=f"Plantilla_Shopstar_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
