@@ -57,6 +57,16 @@ CATEGORIAS_FALABELLA = {
 
 CATEGORIAS_RIPLEY = {
     "Juguetes y Juegos (Figuras Coleccionables)":                          "juguetes_y_juegos.xlsx",
+    "Juguetes y Juegos (Bloques y Construcción - LEGO)":                   "ripley_lego.xlsx",
+    "Juguetes y Juegos (Juegos de Mesa)":                                  "ripley_juegosdemesa.xlsx",
+    "Juguetes y Juegos (Cartas / TCG)":                                    "ripley_tcg.xlsx",
+    "Juguetes y Juegos (Peluches)":                                        "ripley_peluches.xlsx",
+    "Maletería (Mochilas)":                                                "ripley_mochilas.xlsx",
+    "Maletería (Loncheras)":                                               "ripley_lonchera.xlsx",
+    "Vestuario Infantil (Tops / Polos)":                                   "ripley_polo.xlsx",
+    "Vestuario Infantil (Bottoms / Pantalones)":                           "ripley_pantalones.xlsx",
+    "Vestuario Infantil (Conjuntos, Enterizos y Vestidos)":                "ripley_enterizos.xlsx",
+    "Relojes de Pulsera":                                                  "ripley_relojes.xlsx",
 }
 
 CATEGORIA_LEGO = "956  - Juguetes y juegos / Bloques de construcción (Lego)"
@@ -433,9 +443,13 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
         logs.append((f"❌ No se encontró la plantilla de Ripley '{ruta_plantilla}'. Asegúrate de que exista la carpeta y el archivo.", "error"))
         return None, None, logs, True
 
-    ws_data = wb_base['DATA']
+    ws_data = wb_base['Data']
     n_cols = ws_data.max_column
     col_nombres = [str(ws_data.cell(row=2, column=c).value or "").strip() for c in range(1, n_cols + 1)]
+
+    # Leer la categoría exacta desde ReferenceData (fila 2, columna 1)
+    ws_ref = wb_base['ReferenceData']
+    categoria_ripley = str(ws_ref.cell(row=2, column=1).value or "").strip()
 
     columnas_requeridas_wp = ['SKU', 'Nombre', 'Descripción', 'Marcas', 'Inventario', 'Imágenes']
     faltantes = [c for c in columnas_requeridas_wp if c not in df_wp.columns]
@@ -480,7 +494,7 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
 
         for col in col_nombres:
             if not col: continue
-            if col == 'categoria': fila[col] = 'JUEGOS Y JUGUETES/FIGURAS COLECCIONABLES'
+            if col == 'categoria': fila[col] = categoria_ripley
             elif col == 'sku_seller': fila[col] = str(df_wp['SKU'].iloc[i]).strip()
             elif col == 'nombre': fila[col] = limpiar_nombre_ripley(df_wp['Nombre'].iloc[i])
             elif col == 'ShortDescription': fila[col] = 'Encuentra los mejores productos de Raymi Store en Ripley.com'
@@ -518,7 +532,7 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
     return df_productos, wb_base, logs, False
 
 def generar_excel_ripley(df_productos, wb_base):
-    ws = wb_base['DATA']
+    ws = wb_base['Data']
     for row in ws.iter_rows(min_row=3, max_row=ws.max_row):
         for cell in row: cell.value = None
 
