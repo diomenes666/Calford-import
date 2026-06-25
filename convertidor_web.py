@@ -67,6 +67,13 @@ CATEGORIAS_RIPLEY = {
     "Vestuario Infantil (Bottoms / Pantalones)":                           "ripley_pantalones.xlsx",
     "Vestuario Infantil (Conjuntos, Enterizos y Vestidos)":                "ripley_enterizos.xlsx",
     "Relojes de Pulsera":                                                  "ripley_relojes.xlsx",
+    "Artículos de Bebé (Bacinicas)":                                       "ripley_bacinicas.xlsx",
+    "Tecnología (Smartwatch y Smartband)":                                 "ripley_smartwatch.xlsx",
+    "Tecnología (Cargadores)":                                             "ripley_cargadores.xlsx",
+    "Calzado (Zapatillas Urbanas)":                                        "ripley_zapatillasurb.xlsx",
+    "Deporte y Aventura (Patines)":                                        "ripley_patines.xlsx",
+    "Deporte y Aventura (Pelotas y Balones)":                              "ripley_pelotas.xlsx",
+    "Hogar (Sábanas y Ropa de Cama)":                                      "ripley_sabanas.xlsx",
 }
 
 CATEGORIA_LEGO = "956  - Juguetes y juegos / Bloques de construcción (Lego)"
