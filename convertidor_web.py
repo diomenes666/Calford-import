@@ -365,8 +365,11 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
                 fila[col] = pais_produccion
             elif "sku del vendedor" in col.lower() or "seller_sku" in col.lower(): 
                 fila[col] = limpiar_sku_falabella(df_wp['SKU'].iloc[i])
-            elif "código de barras" in col.lower() or "barcode" in col.lower() or "gtin" in col.lower(): 
-                fila[col] = str(gtin_series.iloc[i]) if not pd.isna(gtin_series.iloc[i]) else ""
+            elif "código de barras" in col.lower() or "barcode" in col.lower() or "gtin" in col.lower():
+                try:
+                    fila[col] = int(float(gtin_series.iloc[i])) if not pd.isna(gtin_series.iloc[i]) and str(gtin_series.iloc[i]).strip() not in ('', 'nan') else ""
+                except (ValueError, TypeError):
+                    fila[col] = ""
             elif "variación #" in col.lower() or "variacion #" in col.lower(): 
                 fila[col] = "..."
             elif "quantity" in col.lower() or "stock" in col.lower(): 
@@ -387,6 +390,8 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
                 fila[col] = "Sí"
             elif "caracteristicasdesalud" in col.lower() or "características de salud" in col.lower(): 
                 fila[col] = "Sin BPA"
+            elif "weightoftheproduct" in col.lower():
+                fila[col] = f"{peso_pkg} kg"
             elif "weight" in col.lower() or "peso del paquete" in col.lower(): 
                 fila[col] = peso_pkg
             elif "ancho del paquete" in col.lower() or "width" in col.lower(): 
@@ -395,6 +400,16 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
                 fila[col] = largo_pkg
             elif "alto del paquete" in col.lower() or "height" in col.lower(): 
                 fila[col] = alto_pkg
+            elif "color #" in col.lower():
+                fila[col] = "MULTICOLOR"
+            elif "alto #" in col.lower():
+                fila[col] = f"{alto_pkg} cm"
+            elif "ancho #" in col.lower():
+                fila[col] = f"{ancho_pkg} cm"
+            elif "largo #" in col.lower():
+                fila[col] = f"{largo_pkg} cm"
+            elif "dimensiones" in col.lower():
+                fila[col] = f"{alto_pkg} cm x {largo_pkg} cm x {ancho_pkg} cm"
             elif "imagen principal" in col.lower() or "imagen" in col.lower() or "image" in col.lower():
                 if img_idx < 8:
                     fila[col] = imgs_padded[img_idx]
@@ -405,16 +420,122 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
     logs.append((f"✅ Falabella finalizado con éxito.", "success"))
     return df_productos, wb_base, logs, False
 
+def _convert_to_shared_strings(xlsx_bytes):
+    """
+    Post-procesa el xlsx generado por openpyxl para compatibilidad estricta con Falabella:
+    1. Convierte inlineStr → sharedStrings
+    2. Elimina celdas vacías con t="n"
+    3. Quita t="n" de celdas numéricas con valor
+    4. Corrige rutas absolutas → relativas en workbook.xml.rels  ← FIX CRÍTICO
+    5. Agrega declaración XML a los archivos que la necesitan
+    """
+    import zipfile as _zf, re as _re
+    src = _zf.ZipFile(io.BytesIO(xlsx_bytes))
+    dst_buf = io.BytesIO()
+    dst = _zf.ZipFile(dst_buf, 'w', _zf.ZIP_DEFLATED)
+    shared_strings = []
+    ss_index = {}
+
+    def get_idx(val):
+        if val not in ss_index:
+            ss_index[val] = len(shared_strings)
+            shared_strings.append(val)
+        return ss_index[val]
+
+    pattern = r'<c([^>]*)>\s*<is>\s*<t(?:[^>]*)>(.*?)</t>\s*</is>\s*</c>'
+
+    # ── Paso 1: procesar worksheets ──────────────────────────────────
+    sheet_xmls = {}
+    for name in src.namelist():
+        if _re.match(r'xl/worksheets/sheet\d+\.xml$', name):
+            xml = src.read(name).decode('utf-8').lstrip('\ufeff')
+            xml = _re.sub(r'^\s*<\?xml[^?]*\?>\s*', '', xml)
+
+            def replace_inline(m):
+                attrs = _re.sub(r'\s*t="inlineStr"', '', m.group(1))
+                return f'<c{attrs} t="s"><v>{get_idx(m.group(2))}</v></c>'
+            xml = _re.sub(pattern, replace_inline, xml, flags=_re.DOTALL)
+            xml = _re.sub(r'<c[^>]* t="n"[^>]*>\s*</c>', '', xml)
+            xml = _re.sub(r'(<c\b[^>]*?) t="n"([^>]*>)', r'\1\2', xml)
+            xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + xml
+            sheet_xmls[name] = xml.encode('utf-8')
+
+    # ── Paso 2: escribir todos los archivos ──────────────────────────
+    for name in src.namelist():
+        if name in sheet_xmls:
+            dst.writestr(name, sheet_xmls[name])
+
+        elif name == 'xl/sharedStrings.xml':
+            pass  # regenerado al final
+
+        elif name == 'xl/_rels/workbook.xml.rels':
+            rels = src.read(name).decode('utf-8').lstrip('\ufeff')
+            rels = _re.sub(r'^\s*<\?xml[^?]*\?>\s*', '', rels)
+            # FIX: rutas absolutas → relativas (openpyxl a veces las escribe absolutas)
+            rels = _re.sub(r'Target="/xl/worksheets/', 'Target="worksheets/', rels)
+            rels = _re.sub(r'Target="/xl/styles\.xml"', 'Target="styles.xml"', rels)
+            rels = _re.sub(r'Target="/xl/theme/', 'Target="theme/', rels)
+            rels = _re.sub(r'Target="/xl/sharedStrings\.xml"', 'Target="sharedStrings.xml"', rels)
+            if 'sharedStrings' not in rels:
+                rels = rels.replace(
+                    '</Relationships>',
+                    '<Relationship Id="rIdSS" '
+                    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" '
+                    'Target="sharedStrings.xml"/></Relationships>'
+                )
+            rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + rels
+            dst.writestr(name, rels.encode('utf-8'))
+
+        elif name == '[Content_Types].xml':
+            ct = src.read(name).decode('utf-8').lstrip('\ufeff')
+            ct = _re.sub(r'^\s*<\?xml[^?]*\?>\s*', '', ct)
+            if 'sharedStrings' not in ct:
+                ct = ct.replace(
+                    '</Types>',
+                    '<Override PartName="/xl/sharedStrings.xml" '
+                    'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
+                    '</Types>'
+                )
+            ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + ct
+            dst.writestr(name, ct.encode('utf-8'))
+
+        elif name == 'xl/workbook.xml':
+            wb = src.read(name).decode('utf-8').lstrip('\ufeff')
+            wb = _re.sub(r'^\s*<\?xml[^?]*\?>\s*', '', wb)
+            wb = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + wb
+            dst.writestr(name, wb.encode('utf-8'))
+
+        else:
+            dst.writestr(name, src.read(name))
+
+    # ── Paso 3: sharedStrings.xml ────────────────────────────────────
+    if shared_strings:
+        n = len(shared_strings)
+        ss_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
+        ss_xml += f'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="{n}" uniqueCount="{n}">'
+        for s in shared_strings:
+            esc = s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+            ss_xml += f'<si><t xml:space="preserve">{esc}</t></si>'
+        ss_xml += '</sst>'
+        dst.writestr('xl/sharedStrings.xml', ss_xml.encode('utf-8'))
+
+    src.close(); dst.close(); dst_buf.seek(0)
+    return dst_buf.read()
+
 def generar_excel_falabella(df_productos, wb_base):
     ws = wb_base['Subir plantilla']
     for row in ws.iter_rows(min_row=5, max_row=ws.max_row):
         for cell in row: cell.value = None
+    col_barras = next((c for c in range(1, ws.max_column + 1)
+                       if 'barras' in str(ws.cell(row=4, column=c).value or '').lower()), None)
     for row_idx, row_data in enumerate(df_productos.itertuples(index=False), start=5):
         for col_idx, value in enumerate(row_data, start=1):
-            ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
+            cell = ws.cell(row=row_idx, column=col_idx, value=value if value != '' else None)
+            if col_idx == col_barras and isinstance(value, int):
+                cell.number_format = '0'
     output = io.BytesIO()
     wb_base.save(output)
-    return output.getvalue()
+    return _convert_to_shared_strings(output.getvalue())
 
 
 # =====================================================================
