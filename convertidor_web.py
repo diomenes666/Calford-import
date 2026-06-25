@@ -514,7 +514,7 @@ def _convert_to_shared_strings(xlsx_bytes):
         ss_xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'
         ss_xml += f'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="{n}" uniqueCount="{n}">'
         for s in shared_strings:
-            esc = s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+            esc = _re.sub(r'&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[\da-fA-F]+);)', '&amp;', s)
             ss_xml += f'<si><t xml:space="preserve">{esc}</t></si>'
         ss_xml += '</sst>'
         dst.writestr('xl/sharedStrings.xml', ss_xml.encode('utf-8'))
