@@ -340,7 +340,14 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
     for i in range(n):
         fila = {col: "" for col in col_nombres}
         imgs_raw = df_wp['Imágenes'].iloc[i]
-        imgs = [u.strip() for u in str(imgs_raw).split(',') if u.strip()] if not pd.isna(imgs_raw) else []
+        imgs_raw_list = [u.strip() for u in str(imgs_raw).split(',') if u.strip()] if not pd.isna(imgs_raw) else []
+        # Deduplicar por URL exacta, preservando orden de primera aparición (solo Falabella)
+        seen = set()
+        imgs = []
+        for url in imgs_raw_list:
+            if url not in seen:
+                seen.add(url)
+                imgs.append(url)
         imgs_padded = (imgs + [''] * 8)[:8]
 
         ancho_pkg = safe_num(df_wp.get('Anchura (cm)',  pd.Series([10]*n)).iloc[i], 10)
