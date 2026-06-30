@@ -77,6 +77,7 @@ CATEGORIAS_RIPLEY = {
 }
 
 CATEGORIA_LEGO = "956  - Juguetes y juegos / Bloques de construcción (Lego)"
+CATEGORIA_CARTAS = "2065 - Juguetes y juegos / Juegos de cartas"
 
 # =====================================================================
 # 1. UTILIDADES COMPARTIDAS
@@ -407,6 +408,12 @@ def procesar_logica_falabella(df_wp, df_marcas_maestro, categoria_sel):
                 fila[col] = largo_pkg
             elif "alto del paquete" in col.lower() or "height" in col.lower(): 
                 fila[col] = alto_pkg
+            elif "material #1322" in col.lower():
+                if categoria_sel == CATEGORIA_CARTAS and not fila[col]:
+                    fila[col] = "Cartón"
+            elif "personajes #1313" in col.lower():
+                if categoria_sel == CATEGORIA_CARTAS and not fila[col]:
+                    fila[col] = "Pokemon"
             elif "color #" in col.lower():
                 fila[col] = "MULTICOLOR"
             elif "alto #" in col.lower():
