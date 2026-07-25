@@ -2,7 +2,7 @@ import os
 import math
 import re
 import io
-from datetime import datetime
+from datetime import datetime, timedelta
 import pandas as pd
 import streamlit as st
 import openpyxl
@@ -612,6 +612,7 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
 
     logs.append((f"✨ Leyendo estructura e inyectando datos desde plantilla: {ruta_plantilla}...", "info"))
     hoy_iso = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.000-05:00')
+    ayer_iso = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S.000-05:00')
     fecha_fin_iso = '2050-06-09T23:59:59.000-05:00'
     n = len(df_wp)
 
@@ -664,8 +665,10 @@ def procesar_logica_ripley(df_wp, df_marcas_maestro, categoria_sel):
             elif col == 'price': fila[col] = int(list_p)
             elif col == 'quantity': fila[col] = stock_calc
             elif col == 'state': fila[col] = 'Nuevo'
-            elif col == 'available-start-date': fila[col] = hoy_iso
+            elif col == 'available-start-date': fila[col] = ayer_iso
             elif col == 'available-end-date': fila[col] = fecha_fin_iso
+            elif col == 'discount-start-date': fila[col] = ayer_iso
+            elif col == 'discount-end-date': fila[col] = fecha_fin_iso
             
         filas_productos.append(fila)
 
