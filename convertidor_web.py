@@ -74,6 +74,9 @@ CATEGORIAS_RIPLEY = {
     "Deporte y Aventura (Patines)":                                        "ripley_patines.xlsx",
     "Deporte y Aventura (Pelotas y Balones)":                              "ripley_pelotas.xlsx",
     "Hogar (Sábanas y Ropa de Cama)":                                      "ripley_sabanas.xlsx",
+    "Calzado (Sandalias)":                                                 "ripley_sandalias.xlsx",
+    "Deporte y Aventura (Botellas y Tomatodo)":                            "ripley_tomatodo.xlsx",
+    "Relojes, Joyas y Óptica (Lentes de Sol)":                             "ripley_lentesdesol.xlsx",
 }
 
 CATEGORIA_LEGO = "956  - Juguetes y juegos / Bloques de construcción (Lego)"
