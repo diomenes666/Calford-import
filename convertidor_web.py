@@ -37,6 +37,18 @@ st.markdown("""
             background: linear-gradient(135deg, #0369a1, #075985) !important;
             transform: translateY(-1px) !important;
         }
+        /* Menú desplegable de los selectbox (Ripley y Falabella) */
+        div[data-baseweb="popover"] ul[role="listbox"] {
+            max-height: 320px !important;
+            overflow-y: auto !important;
+        }
+        div[data-baseweb="popover"] li[role="option"] {
+            white-space: normal !important;
+            word-break: break-word !important;
+            line-height: 1.35 !important;
+            padding-top: 8px !important;
+            padding-bottom: 8px !important;
+        }
     </style>
 """, unsafe_allow_html=True)
 
